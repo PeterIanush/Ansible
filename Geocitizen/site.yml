@@ -1,0 +1,18 @@
+---
+- hosts: master-api
+  remote_user: peter
+  sudo: yes
+  tasks:
+
+  - name: Setup Geocitizen
+    hosts: master-api
+    gather_facts: no
+    roles:
+     	- infrastructure
+  - name: install tomcat 
+    remote_user: peter
+    sudo: yes
+    hosts: launched_servers
+    roles:
+	- tomcat
+	

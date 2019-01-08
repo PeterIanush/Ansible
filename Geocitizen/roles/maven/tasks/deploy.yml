@@ -1,0 +1,32 @@
+- name: Git pull maven compile tomcat deploy
+  hosts: master-api
+  become: yes
+  become_user: root
+  become_method: sudo
+  vars:
+     remote_warfile: /root/Geocitizen/target/citizen.war
+     remote_webapps: /usr/share/tomcat/webapps/
+
+  tasks:
+    - name: tomcat stop
+      service: name=tomcat state=stopped
+
+    - name: check out the repository on the host
+      command: chdir=/root/ git clone https://github.com/PeterIanush/Geocitizen.git
+
+    - name: cofigure site url
+      command: chdir=/root/Geocitizen/ sed -i 's/localhost/192.168.216.151/g' src/main/webapp/static/js/app.6313e3379203ca68a255.js
+
+    - name: configure aplication propertist
+      command: chdir=/root/Geocitizen/  sed -i 's/localhost:5432/192.168.216.164:5432/g' src/main/resources/application.properties
+
+    - name: maven clean install
+      command: mvn -f /root/Geocitizen/pom.xml clean install -DskipTests
+
+    - name: copy war file
+      command: cp {{remote_warfile}} {{remote_webapps}}
+      notify: start tomcat
+
+  handlers:
+    - name: start tomcat
+      service: name=tomcat state=started

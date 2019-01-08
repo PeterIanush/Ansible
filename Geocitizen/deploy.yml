@@ -1,0 +1,7 @@
+---
+- name: deploy Geocitizen
+  remote_user: peter
+  sudo: yes
+  hosts: tag_Name_tomcat
+  roles:
+	-deploy_app

@@ -1,0 +1,85 @@
+---
+- name: Install basic software
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+     - tomcat8
+
+- name: Install add-apt-repostory
+  become: yes
+  apt: name=software-properties-common state=latest
+
+- name: Add Oracle Java Repository
+  become: yes
+  apt_repository: repo='ppa:webupd8team/java'
+
+- name: Accept Java 8 License
+  become: yes
+  debconf: name='oracle-java8-installer' question='shared/accepted-oracle-license-v1-1' value='true' vtype='select'
+
+- name: Install Oracle Java 8
+  become: yes
+  apt: name={{item}} state=latest
+  with_items:
+    - oracle-java8-installer
+    - ca-certificates
+    - oracle-java8-set-default 
+
+- name: Create tomcat security
+  geo_group:
+	description: "Open ssh and tomcat ports"
+	name: "tomcat-sg"
+	region: "{{ region }}"
+	rules:
+	  # only allow ssh access from the nat instance
+	  - proto: tcp
+	    from_port: 22
+	    to_port: 22
+	    cidr_ip: "{{ nat_ip }}/32"
+	  # open tomcat to the world
+	  - proto: tcp 
+	    from_port: 8080
+	    to_port: 8080
+	    cidr_ip: 0.0.0.0/0
+	 purge_rules: yes
+	 state: present
+	 vpc_id: "{{ vpc_id }}"
+   register: tomcat_sg
+
+- name: Launch base server
+  ec2:
+    assign_public_ip: yes
+    group_id: "{{ tomcat_sg.group_id }}"
+    image: "{{ tomcat_ami }}"
+    instance_type: "{{ tomcat_instance_type }}"
+    instance_profile_name: s3-tomcat
+    exact_count: "{{ tomcat_instance_count }}"
+    count_tag: { "Name": "tomcat" }
+    key_name: "{{ tomcat_kp }}"
+    region: "{{ region }}"
+    vpc_subnet_id: "{{ poc_subnet }}"
+    wait: no
+    assign_public_ip: yes
+    instance_tags: {
+      "Name": "tomcat",
+    }
+  register: base_server 
+
+# because wait_for doesn't use the ssh config we have to delegate this taks to the nat host. Otherwise tower wil try to connect to port 22 directly
+- name: Check if we can ssh to the instance
+  wait_for:
+    host: "{{ item.private_ip }}"
+    port: 22
+    state: started
+  with_items: base_server.instances
+  when: item.state != "terminated"
+  delegate_to: "{{ nat_ip }}"
+
+# add all servers to a temporary group we can use to install tomcat. We need this group as in the current playbook we have 'tower-via-local' as inventory
+- name: Add servers to temporary group
+  add_host:
+    hostname: "{{ item.private_ip }}"
+    groupname: launched_servers
+  with_items: base_server.instances
+  when: item.state != "terminated"

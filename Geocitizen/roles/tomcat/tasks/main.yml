@@ -1,0 +1,57 @@
+---
+- hosts: master-api
+  remote_user: peter
+  sudo: yes
+  tasks:
+  - name: add group "tomcat"
+    group: name=tomcat
+
+  - name: add user "tomcat"
+    user: name=tomcat group=tomcat home=/usr/share/tomcat
+    become: True
+   
+  - name: Download Tomcat
+    get_url: url=http://mirror.olnevhost.net/pub/apache/tomcat/tomcat-9/v9.0.14/bin/apache-tomcat-9.0.14.tar.gz dest=/opt/apache-tomcat-9.0.14.tar.gz
+  
+  - name: Extract archive
+    command: chdir=/usr/share /bin/tar xzvf /opt/apache-tomcat-9.0.14.tar.gz -C /usr/share/tomcat --strip-components=1
+
+  - name: Change owership of Tomcat installation
+    file: path=/usr/share/tomcat owner=tomcat group=tomcat state=directory recurse=yes
+
+  - name: create path CATALINA_HOME
+    command: echo "CATALINA_HOME="/usr/share/tomcat"" >> /etc/environment && source /etc/environment
+
+  - name: Configure Tomcat sevice
+    template: src=tomcat.service dest=/etc/systemd/system/
+   
+  - name: just force systemd to reread configs
+    systemd:
+     daemon_reload: yes
+
+  - name: restart tomcat
+    service:
+      name: tomcat.service
+      state: restarted
+
+  - name: Configure Tomcat server
+    template: src=server.xml dest=/usr/share/tomcat/conf/
+    
+
+  - name: Configure Tomcat users
+    template: src=tomcat-users.xml dest=/usr/share/tomcat/conf/
+    
+
+  - name: Configure Tomcat context
+    template: src=context.xml dest=/usr/share/tomcat/webapps/manager/META-INF/
+    
+  
+  - name: Start Tomcat
+    service: name=tomcat state=started enabled=yes
+
+#  - name: allwo ufw
+#    ufw: rule={{ item.rules }} port={{ item.port }} proto={{ item.proto }}
+#    with_items:
+#    - {rule: 'allow', port: '8000:8088', proto: 'tcp'}
+#    notify:
+#    - restart ufw
